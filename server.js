@@ -3,7 +3,7 @@ const inquirer = require('inquirer');
 const chalk = require('chalk');
 const cTable = require('console.table');
 const connection = require('./config/connection')
-const startScreen = ['View all Employees', 'View all Emplyees by Department', 'View all Employees by Manager', 'Add Employee', 'Remove Employee', 'Update Employee Role', 'View all Roles', 'Add Role', 'Remove Role', 'View all Departments', 'Add Department', 'Remove Department', 'Exit']
+const startScreen = ['View all Employees', 'View all Employees by Department', 'View all Employees by Manager', 'Add Employee', 'Remove Employee', 'Update Employee Role', 'View all Roles', 'Add Role', 'Remove Role', 'View all Departments', 'Add Department', 'Remove Department', 'Exit']
 const allEmployeeQuery = `SELECT e.id, e.first_name AS "First Name", e.last_name AS "Last Name", r.title, d.department_name AS "Department", IFNULL(r.salary, 'No Data') AS "Salary", CONCAT(m.first_name," ",m.last_name) AS "Manager"
 FROM employee e
 LEFT JOIN role r 
@@ -15,7 +15,7 @@ ORDER BY e.id;`
 const addEmployeeQuestions = ['What is the first name?', 'What is the last name?', 'What is their role?', 'Who is their manager?']
 // const roleQuery = 'SELECT * from role; SELECT CONCAT (e.first_name," ",e.last_name) AS full_name, r.title, d.department_name FROM employees e INNER JOIN role r ON r.id = e.role_id INNER JOIN department d ON d.id = r.department_id WHERE department_name = "Management"'
 const roleQuery = 'SELECT * from role; SELECT CONCAT (e.first_name," ",e.last_name) AS full_name FROM employee e'
-const mgrQuery = 'SELECT CONCAT (e.first_name," ",e.last_name) AS full_name, r.title, d.department_name FROM employee e INNER JOIN role r ON r.id = e.role_id INNER JOIN department d ON d.id = r.department_id WHERE department_name = "Management";'
+//const mgrQuery = 'SELECT CONCAT (e.first_name," ",e.last_name) AS full_name, r.title, d.department_name FROM employee e INNER JOIN role r ON r.id = e.role_id INNER JOIN department d ON d.id = r.department_id WHERE department_name = "CEO";'
 
 
 
@@ -85,6 +85,7 @@ const showAll = () => {
 }
 
 const showByDept = () => {
+    console.log("showByDept");
     const deptQuery = 'SELECT * FROM department';
     connection.query(deptQuery, (err, results) => {
         if (err) throw err;
@@ -107,7 +108,7 @@ const showByDept = () => {
                 }
             }
 
-            const query = 'SELECT e.id, e.first_name AS "First Name", e.last_name AS "Last Name", r.title AS "Title", d.department_name AS "Department", r.salary AS "Salary" FROM employees e INNER JOIN role r ON r.id = e.role_id INNER JOIN departments d ON d.id = r.department_id WHERE ?;';
+            const query = 'SELECT e.id, e.first_name AS "First Name", e.last_name AS "Last Name", r.title AS "Title", d.department_name AS "Department", r.salary AS "Salary" FROM employee e INNER JOIN role r ON r.id = e.role_id INNER JOIN department d ON d.id = r.department_id WHERE ?;';
             connection.query(query, { department_name: chosenDept.department_name }, (err, res) => {
                 if (err) throw err;
                 console.log(' ');
@@ -119,6 +120,8 @@ const showByDept = () => {
 }
 
 const showByManager = () => {
+
+    let mgrQuery = `SELECT * from employee`
     connection.query(mgrQuery, (err, results) => {
         if (err) throw err;
 
@@ -127,25 +130,29 @@ const showByManager = () => {
                 name: 'mgr_choice',
                 type: 'list',
                 choices: function () {
-                    let choiceArray = results.map(choice => choice.full_name);
+                    let choiceArray = results.map(choice => choice.id);
                     return choiceArray;
+
                 },
                 message: 'Select a Manager:'
             }
         ]).then((answer) => {
-            const mgrQuery2 = `SELECT e.id, e.first_name AS "First Name", e.last_name AS "Last Name", IFNULL(r.title, "No Data") AS "Title", IFNULL(d.department_name, "No Data") AS "Department", IFNULL(r.salary, 'No Data') AS "Salary", CONCAT(m.first_name," ",m.last_name) AS "Manager"
-                FROM employee e
-                LEFT JOIN role r 
-                ON r.id = e.role_id 
-                LEFT JOIN department d 
-                ON d.id = r.department_id
-                LEFT JOIN employee m ON m.id = e.manager_id
-                WHERE CONCAT(m.first_name," ",m.last_name) = ?
-                ORDER BY e.id;`
-            connection.query(mgrQuery2, [answer.mgr_choice], (err, results) => {
+            console.log(answer);
+            const mgrQuery2 = `SELECT employee.id, employee.first_name, employee.last_name, department_name AS department,
+             role.title FROM employee LEFT JOIN role on role.id = manager_id LEFT JOIN department ON department.id = 
+             role.department_id WHERE manager_id = ?`
+
+
+            // connection.query(mgrQuery2, [answer.mgr_choice], (err, results) => {
+            //     if (err) throw err;
+            //     console.log(' ');
+            //     console.table(chalk.yellow('Employees by Manager'), results);
+            //     startApp();
+            connection.query(mgrQuery2, [answer.mgr_choice], (err, res) => {
+                console.log("connection Query2", res)
                 if (err) throw err;
                 console.log(' ');
-                console.table(chalk.yellow('Employees by Manager'), results);
+                console.table(chalk.yellow(`All Employees by Manager: `), res)
                 startApp();
             })
         })
@@ -190,9 +197,9 @@ const addEmployee = () => {
             }
         ]).then((answer) => {
             connection.query(
-                `INSERT INTO employee(first_name, last_name, role_id, manager_id) VALUES(?, ?, 
-                (SELECT id FROM role WHERE title = ? ), 
-                (SELECT id FROM (SELECT id FROM employeeWHERE CONCAT(first_name," ",last_name) = ? ) AS tmptable))`, [answer.fName, answer.lName, answer.role, answer.manager]
+                `INSERT INTO employee(first_name, last_name, role_id, manager_id) VALUES(?, ?,
+                (SELECT id FROM role WHERE title = ? ),
+                (SELECT id FROM(SELECT id FROM employee WHERE CONCAT(first_name, " ", last_name) = ? ) AS tmptable))`, [answer.fName, answer.lName, answer.role, answer.manager]
             )
             startApp();
         })
@@ -213,14 +220,14 @@ const removeEmployee = () => {
                 message: 'Enter the Employee ID of the person to remove:'
             }
         ]).then((answer) => {
-            connection.query(`DELETE FROM employeewhere ?`, { id: answer.IDtoRemove })
+            connection.query(`DELETE FROM employee where ? `, { id: answer.IDtoRemove })
             startApp();
         })
     })
 }
 
 const updateRole = () => {
-    const query = `SELECT CONCAT (first_name," ",last_name) AS full_name FROM employee; SELECT title FROM role`
+    const query = `SELECT CONCAT(first_name, " ", last_name) AS full_name FROM employee; SELECT title FROM role`
     connection.query(query, (err, results) => {
         if (err) throw err;
 
@@ -244,8 +251,8 @@ const updateRole = () => {
             }
         ]).then((answer) => {
             connection.query(`UPDATE employee
-            SET role_id = (SELECT id FROM role WHERE title = ? ) 
-            WHERE id = (SELECT id FROM(SELECT id FROM employee WHERE CONCAT(first_name," ",last_name) = ?) AS tmptable)`, [answer.newRole, answer.empl], (err, results) => {
+    SET role_id = (SELECT id FROM role WHERE title = ? )
+    WHERE id = (SELECT id FROM(SELECT id FROM employee WHERE CONCAT(first_name, " ", last_name) = ?) AS tmptable)`, [answer.newRole, answer.empl], (err, results) => {
                 if (err) throw err;
                 startApp();
             })
@@ -298,10 +305,10 @@ const addRole = () => {
             }
         ]).then((answer) => {
             connection.query(
-                `INSERT INTO role(title, salary, department_id) 
-                VALUES
-                ("${answer.newTitle}", "${answer.newSalary}", 
-                (SELECT id FROM department WHERE department_name = "${answer.dept}"));`
+                `INSERT INTO role(title, salary, department_id)
+    VALUES
+        ("${answer.newTitle}", "${answer.newSalary}",
+            (SELECT id FROM department WHERE department_name = "${answer.dept}")); `
             )
             startApp();
 
@@ -362,7 +369,7 @@ const addDept = () => {
                 message: 'Enter the name of the Department to add:'
             }
         ]).then((answer) => {
-            connection.query(`INSERT INTO department(department_name) VALUES( ? )`, answer.newDept)
+            connection.query(`INSERT INTO department(department_name) VALUES( ?)`, answer.newDept)
             startApp();
         })
     })
